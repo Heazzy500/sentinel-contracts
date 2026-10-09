@@ -33,6 +33,9 @@ pub struct FlagSubmission {
 }
 
 const FLAG_EVENT: Symbol = symbol_short!("flagged");
+const AGENT_ADD_EVENT: Symbol = symbol_short!("agent_add");
+const AGENT_DEL_EVENT: Symbol = symbol_short!("agent_del");
+const THRESHOLD_EVENT: Symbol = symbol_short!("threshold");
 const MAX_SCORE: u32 = 100;
 const MAX_FLAG_BATCH: u32 = 16;
 const INSTANCE_TTL_THRESHOLD: u32 = 10_000;
@@ -84,9 +87,13 @@ impl StellarSentinel {
     pub fn authorize_agent(env: Env, admin: Address, agent: Address) {
         admin.require_auth();
         require_admin(&env, &admin);
+        env.storage()
+            .instance()
+            .set(&DataKey::Agent(agent.clone()), &true);
         add_agent_to_registry(&env, &agent);
-        env.storage().instance().set(&DataKey::Agent(agent), &true);
+        env.storage().instance().set(&DataKey::Agent(agent.clone()), &true);
         bump_instance_ttl(&env);
+        env.events().publish((AGENT_ADD_EVENT, admin, agent), true);
     }
 
     /// Admin-only: revoke an agent's ability to submit risk flags.
@@ -98,6 +105,7 @@ impl StellarSentinel {
             .set(&DataKey::Agent(agent.clone()), &false);
         remove_agent_from_registry(&env, &agent);
         bump_instance_ttl(&env);
+        env.events().publish((AGENT_DEL_EVENT, admin, agent), false);
     }
 
     /// Return the active agent registry to the administrator.
@@ -120,10 +128,17 @@ impl StellarSentinel {
         if threshold > MAX_SCORE {
             panic!("threshold must be between 0 and 100");
         }
+        let previous: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::RiskThreshold)
+            .expect("not initialized");
         env.storage()
             .instance()
             .set(&DataKey::RiskThreshold, &threshold);
         bump_instance_ttl(&env);
+        env.events()
+            .publish((THRESHOLD_EVENT, admin), (previous, threshold));
     }
 
     /// Admin-only: stop agent flag submissions.
@@ -199,14 +214,11 @@ impl StellarSentinel {
             timestamp: env.ledger().timestamp(),
         };
         env.storage().persistent().set(&key, &record);
-        env.storage().persistent().extend_ttl(
-            &key,
-            PERSISTENT_TTL_THRESHOLD,
-            PERSISTENT_TTL_BUMP,
-        );
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_BUMP);
         bump_instance_ttl(&env);
-        env.events()
-            .publish((FLAG_EVENT, agent, subject), score);
+        env.events().publish((FLAG_EVENT, agent, subject), score);
     }
 
     /// Submit up to MAX_FLAG_BATCH risk flags in one authorized transaction.
@@ -275,7 +287,8 @@ impl StellarSentinel {
     }
 
     pub fn get_threshold(env: Env) -> u32 {
-        let threshold = env.storage()
+        let threshold = env
+            .storage()
             .instance()
             .get(&DataKey::RiskThreshold)
             .unwrap_or(0);
