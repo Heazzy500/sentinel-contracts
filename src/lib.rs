@@ -21,6 +21,14 @@ pub struct FlagRecord {
     pub timestamp: u64,
 }
 
+/// Administrator and threshold values observed in one contract read.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContractConfig {
+    pub admin: Address,
+    pub threshold: u32,
+}
+
 const FLAG_EVENT: Symbol = symbol_short!("flagged");
 const MAX_SCORE: u32 = 100;
 const INSTANCE_TTL_THRESHOLD: u32 = 10_000;
@@ -157,6 +165,22 @@ impl StellarSentinel {
             .unwrap_or(0);
         bump_instance_ttl(&env);
         threshold
+    }
+
+    /// Return admin and threshold together, or None before initialization.
+    pub fn get_contract_config(env: Env) -> Option<ContractConfig> {
+        let admin: Option<Address> = env.storage().instance().get(&DataKey::Admin);
+        let threshold: Option<u32> = env
+            .storage()
+            .instance()
+            .get(&DataKey::RiskThreshold);
+        match (admin, threshold) {
+            (Some(admin), Some(threshold)) => {
+                bump_instance_ttl(&env);
+                Some(ContractConfig { admin, threshold })
+            }
+            _ => None,
+        }
     }
 }
 
