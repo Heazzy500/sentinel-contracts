@@ -110,6 +110,7 @@ The CI Wasm artifact is under `target/wasm32-unknown-unknown/release/`. `stellar
 
 ## Contract interface
 
+- `get_interface_version()` — return the interface generation; increment it for incompatible method or event changes.
 - `initialize(admin, default_threshold)` — one-time admin and threshold setup.
 - `get_admin()` — read the configured administrator after initialization.
 - `transfer_admin(current_admin, new_admin)` — atomically transfer control; both addresses must authorize the same invocation.

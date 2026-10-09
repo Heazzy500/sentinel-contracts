@@ -37,6 +37,7 @@ const AGENT_ADD_EVENT: Symbol = symbol_short!("agent_add");
 const AGENT_DEL_EVENT: Symbol = symbol_short!("agent_del");
 const THRESHOLD_EVENT: Symbol = symbol_short!("threshold");
 const MAX_SCORE: u32 = 100;
+const INTERFACE_VERSION: u32 = 1;
 const MAX_FLAG_BATCH: u32 = 16;
 const INSTANCE_TTL_THRESHOLD: u32 = 10_000;
 const INSTANCE_TTL_BUMP: u32 = 100_000;
@@ -50,6 +51,11 @@ pub struct StellarSentinel;
 
 #[contractimpl]
 impl StellarSentinel {
+    /// Return the external contract interface generation.
+    pub fn get_interface_version() -> u32 {
+        INTERFACE_VERSION
+    }
+
     /// One-time setup. Sets the contract admin and a default risk threshold.
     pub fn initialize(env: Env, admin: Address, default_threshold: u32) {
         if env.storage().instance().has(&DataKey::Admin) {
