@@ -115,6 +115,7 @@ The CI Wasm artifact is under `target/wasm32-unknown-unknown/release/`. `stellar
 - `transfer_admin(current_admin, new_admin)` — atomically transfer control; both addresses must authorize the same invocation.
 - `authorize_agent(admin, agent)` / `revoke_agent(admin, agent)` — manage flagging agents. `authorize_agents` / `revoke_agents` support bounded batches of up to 16 addresses; repeated entries are idempotent.
 - `set_threshold(admin, threshold)` / `get_threshold()` — configure/read the threshold.
+- `is_score_accepted(score)` — preflight the score range and active threshold; `flag_anomaly` remains authoritative.
 - `pause(admin)` / `unpause(admin)` / `is_paused()` — stop or resume new flag submissions; read operations remain available.
 - `is_agent(agent)` — check agent authorization and extend the active contract instance TTL.
 - `flag_anomaly(agent, subject, score)` — require an authorized agent and a score at or above threshold; persist the latest record and publish `flagged`.
