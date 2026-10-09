@@ -69,6 +69,17 @@ impl StellarSentinel {
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_BUMP);
     }
 
+    /// Return the configured contract administrator.
+    pub fn get_admin(env: Env) -> Address {
+        let admin = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+        bump_instance_ttl(&env);
+        admin
+    }
+
     /// Transfer administration in one operation accepted by both addresses.
     pub fn transfer_admin(env: Env, current_admin: Address, new_admin: Address) {
         current_admin.require_auth();
