@@ -95,6 +95,7 @@ The CI Wasm artifact is under `target/wasm32-unknown-unknown/release/`. `stellar
 ## Contract interface
 
 - `initialize(admin, default_threshold)` — one-time admin and threshold setup.
+- `set_paused(admin, paused)` / `is_paused()` — pause new flags while keeping read operations available; only state changes emit `pause` events.
 - `authorize_agent(admin, agent)` / `revoke_agent(admin, agent)` — manage flagging agents.
 - `set_threshold(admin, threshold)` / `get_threshold()` — configure/read the threshold.
 - `is_agent(agent)` — check agent authorization.

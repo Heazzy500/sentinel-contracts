@@ -7,6 +7,7 @@ pub enum DataKey {
     Admin,
     Agent(Address),
     RiskThreshold,
+    Paused,
     LatestFlag(Address),
 }
 
@@ -22,6 +23,7 @@ pub struct FlagRecord {
 }
 
 const FLAG_EVENT: Symbol = symbol_short!("flagged");
+const PAUSE_EVENT: Symbol = symbol_short!("pause");
 const MAX_SCORE: u32 = 100;
 const INSTANCE_TTL_THRESHOLD: u32 = 10_000;
 const INSTANCE_TTL_BUMP: u32 = 100_000;
@@ -46,9 +48,35 @@ impl StellarSentinel {
         env.storage()
             .instance()
             .set(&DataKey::RiskThreshold, &default_threshold);
+        env.storage().instance().set(&DataKey::Paused, &false);
         env.storage()
             .instance()
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_BUMP);
+    }
+
+    /// Admin-only: pause or resume submissions of new flags.
+    pub fn set_paused(env: Env, admin: Address, paused: bool) {
+        admin.require_auth();
+        require_admin(&env, &admin);
+        let current: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if current == paused {
+            bump_instance_ttl(&env);
+            return;
+        }
+        env.storage().instance().set(&DataKey::Paused, &paused);
+        env.events().publish((PAUSE_EVENT, admin), paused);
+        bump_instance_ttl(&env);
+    }
+
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
     }
 
     /// Admin-only: authorize an address to act as a monitoring agent.
@@ -96,6 +124,14 @@ impl StellarSentinel {
     /// anomalous. Scores below the configured threshold are rejected. Emits
     /// the stable `flagged` event and records the latest flag for the subject.
     pub fn flag_anomaly(env: Env, agent: Address, subject: Address, score: u32) {
+        if env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+        {
+            panic!("contract is paused");
+        }
         agent.require_auth();
         let is_agent: bool = env
             .storage()
