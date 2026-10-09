@@ -7,6 +7,7 @@ pub enum DataKey {
     Admin,
     Agent(Address),
     RiskThreshold,
+    Paused,
     LatestFlag(Address),
     // Append registry storage to preserve existing storage-key encoding.
     AgentRegistry,
@@ -33,6 +34,7 @@ pub struct FlagSubmission {
 }
 
 const FLAG_EVENT: Symbol = symbol_short!("flagged");
+const PAUSE_EVENT: Symbol = symbol_short!("pause");
 const PAUSE_EVENT: Symbol = symbol_short!("pause");
 const MAX_SCORE: u32 = 100;
 const MAX_FLAG_BATCH: u32 = 16;
@@ -151,6 +153,38 @@ impl StellarSentinel {
         bump_instance_ttl(&env);
     }
 
+    /// Admin-only: stop agent flag submissions.
+    pub fn pause(env: Env, admin: Address) {
+        admin.require_auth(); require_admin(&env, &admin);
+        let current: bool = env.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        if !current { env.storage().instance().set(&DataKey::Paused, &true); env.events().publish((PAUSE_EVENT, admin), true); }
+        bump_instance_ttl(&env);
+    }
+
+    /// Admin-only: set or clear the submission pause state.
+    pub fn set_paused(env: Env, admin: Address, paused: bool) {
+        admin.require_auth(); require_admin(&env, &admin);
+        let current: bool = env.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        if current != paused { env.storage().instance().set(&DataKey::Paused, &paused); env.events().publish((PAUSE_EVENT, admin), paused); }
+        bump_instance_ttl(&env);
+    }
+
+    /// Admin-only: resume agent flag submissions.
+    pub fn unpause(env: Env, admin: Address) {
+        admin.require_auth(); require_admin(&env, &admin);
+        let current: bool = env.storage().instance().get(&DataKey::Paused).unwrap_or(false);
+        if current { env.storage().instance().set(&DataKey::Paused, &false); env.events().publish((PAUSE_EVENT, admin), false); }
+        bump_instance_ttl(&env);
+    }
+
+    /// Report whether new flag submissions are currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
     pub fn is_agent(env: Env, agent: Address) -> bool {
         let authorized = env.storage()
             .instance()
@@ -167,7 +201,7 @@ impl StellarSentinel {
         if env
             .storage()
             .instance()
-            .get(&DataKey::Paused)
+            .get::<_, bool>(&DataKey::Paused)
             .unwrap_or(false)
         {
             panic!("contract is paused");
