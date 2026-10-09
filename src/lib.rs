@@ -8,6 +8,9 @@ pub enum DataKey {
     Agent(Address),
     RiskThreshold,
     LatestFlag(Address),
+    // Keep new variants after the original keys to preserve their storage encoding.
+    MonitorAgent(Address),
+    ResponderAgent(Address),
 }
 
 /// Latest flag recorded for a subject. Soroban events remain the append-only
@@ -51,14 +54,28 @@ impl StellarSentinel {
             .extend_ttl(INSTANCE_TTL_THRESHOLD, INSTANCE_TTL_BUMP);
     }
 
-    /// Admin-only: authorize an address to act as a monitoring agent.
-    /// TODO(#issue): role separation between "monitor" and "responder" agents
-    /// is not implemented yet — every authorized agent currently has full
-    /// flagging rights. See CONTRIBUTING for the open issue.
+    /// Legacy admin-only grant, retained as a responder-compatible alias.
     pub fn authorize_agent(env: Env, admin: Address, agent: Address) {
         admin.require_auth();
         require_admin(&env, &admin);
-        env.storage().instance().set(&DataKey::Agent(agent), &true);
+        env.storage().instance().set(&DataKey::Agent(agent.clone()), &true);
+        env.storage().instance().set(&DataKey::ResponderAgent(agent), &true);
+        bump_instance_ttl(&env);
+    }
+
+    /// Admin-only: grant monitoring access without flag-submission rights.
+    pub fn authorize_monitor(env: Env, admin: Address, agent: Address) {
+        admin.require_auth();
+        require_admin(&env, &admin);
+        env.storage().instance().set(&DataKey::MonitorAgent(agent), &true);
+        bump_instance_ttl(&env);
+    }
+
+    /// Admin-only: grant the right to submit risk flags.
+    pub fn authorize_responder(env: Env, admin: Address, agent: Address) {
+        admin.require_auth();
+        require_admin(&env, &admin);
+        env.storage().instance().set(&DataKey::ResponderAgent(agent), &true);
         bump_instance_ttl(&env);
     }
 
@@ -66,9 +83,25 @@ impl StellarSentinel {
     pub fn revoke_agent(env: Env, admin: Address, agent: Address) {
         admin.require_auth();
         require_admin(&env, &admin);
-        env.storage()
-            .instance()
-            .set(&DataKey::Agent(agent), &false);
+        env.storage().instance().set(&DataKey::Agent(agent.clone()), &false);
+        env.storage().instance().set(&DataKey::MonitorAgent(agent.clone()), &false);
+        env.storage().instance().set(&DataKey::ResponderAgent(agent), &false);
+        bump_instance_ttl(&env);
+    }
+
+    /// Admin-only: revoke monitoring access without changing responder rights.
+    pub fn revoke_monitor(env: Env, admin: Address, agent: Address) {
+        admin.require_auth();
+        require_admin(&env, &admin);
+        env.storage().instance().set(&DataKey::MonitorAgent(agent), &false);
+        bump_instance_ttl(&env);
+    }
+
+    /// Admin-only: revoke flag-submission rights, including legacy grants.
+    pub fn revoke_responder(env: Env, admin: Address, agent: Address) {
+        admin.require_auth();
+        require_admin(&env, &admin);
+        env.storage().instance().set(&DataKey::ResponderAgent(agent), &false);
         bump_instance_ttl(&env);
     }
 
@@ -86,10 +119,15 @@ impl StellarSentinel {
     }
 
     pub fn is_agent(env: Env, agent: Address) -> bool {
-        env.storage()
-            .instance()
-            .get(&DataKey::Agent(agent))
-            .unwrap_or(false)
+        has_monitor_role(&env, &agent) || has_responder_role(&env, &agent)
+    }
+
+    pub fn is_monitor(env: Env, agent: Address) -> bool {
+        has_monitor_role(&env, &agent)
+    }
+
+    pub fn is_responder(env: Env, agent: Address) -> bool {
+        has_responder_role(&env, &agent)
     }
 
     /// Called by an authorized agent when it flags a transaction/address as
@@ -97,12 +135,7 @@ impl StellarSentinel {
     /// the stable `flagged` event and records the latest flag for the subject.
     pub fn flag_anomaly(env: Env, agent: Address, subject: Address, score: u32) {
         agent.require_auth();
-        let is_agent: bool = env
-            .storage()
-            .instance()
-            .get(&DataKey::Agent(agent.clone()))
-            .unwrap_or(false);
-        if !is_agent {
+        if !has_responder_role(&env, &agent) {
             panic!("not an authorized agent");
         }
         if score > MAX_SCORE {
@@ -157,6 +190,26 @@ impl StellarSentinel {
             .unwrap_or(0);
         bump_instance_ttl(&env);
         threshold
+    }
+}
+
+fn has_monitor_role(env: &Env, agent: &Address) -> bool {
+    env.storage()
+        .instance()
+        .get(&DataKey::MonitorAgent(agent.clone()))
+        .unwrap_or(false)
+}
+
+fn has_responder_role(env: &Env, agent: &Address) -> bool {
+    let key = DataKey::ResponderAgent(agent.clone());
+    if env.storage().instance().has(&key) {
+        env.storage().instance().get(&key).unwrap_or(false)
+    } else {
+        // Existing deployments stored authorized responders in `Agent(Address)`.
+        env.storage()
+            .instance()
+            .get(&DataKey::Agent(agent.clone()))
+            .unwrap_or(false)
     }
 }
 

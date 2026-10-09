@@ -5,6 +5,12 @@
 
 Soroban contract for administrator-managed monitoring agents, a configurable 0–100 score threshold, and account flags. It publishes `flagged` events and stores the latest flag for each subject. It does not store full history; event indexing is needed for that.
 
+## Agent roles
+
+Administrators can grant monitoring access with `authorize_monitor` and flag-submission access with `authorize_responder`; `flag_anomaly` requires the responder role. `is_monitor` and `is_responder` report each role, while `is_agent` remains a compatibility query. The legacy `authorize_agent` method remains as a responder-compatible grant, and `revoke_agent` clears both roles.
+
+For upgrade safety, pre-existing `Agent(Address)` entries continue to authorize responders when no explicit responder entry exists. `revoke_responder` writes an explicit denial that overrides a legacy grant. To convert a legacy agent to monitor-only, call `revoke_agent` followed by `authorize_monitor`. New storage-key variants are appended after existing variants to preserve stored key encodings.
+
 ## Architecture
 
 ```mermaid

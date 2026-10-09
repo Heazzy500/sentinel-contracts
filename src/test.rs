@@ -153,3 +153,60 @@ fn agent_cannot_submit_score_above_100() {
     client.authorize_agent(&admin, &agent);
     client.flag_anomaly(&agent, &subject, &101);
 }
+
+#[test]
+#[should_panic(expected = "not an authorized agent")]
+fn monitor_only_agent_cannot_submit_a_flag() {
+    let env = Env::default();
+    let contract_id = env.register(StellarSentinel, ());
+    let client = StellarSentinelClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let monitor = Address::generate(&env);
+    let subject = Address::generate(&env);
+    env.mock_all_auths();
+
+    client.initialize(&admin, &70);
+    client.authorize_monitor(&admin, &monitor);
+    assert!(client.is_monitor(&monitor));
+    assert!(!client.is_responder(&monitor));
+    client.flag_anomaly(&monitor, &subject, &90);
+}
+
+#[test]
+fn responder_role_can_flag_independently_of_monitor_role() {
+    let env = Env::default();
+    let contract_id = env.register(StellarSentinel, ());
+    let client = StellarSentinelClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let responder = Address::generate(&env);
+    let subject = Address::generate(&env);
+    env.mock_all_auths();
+
+    client.initialize(&admin, &70);
+    client.authorize_responder(&admin, &responder);
+    assert!(client.is_agent(&responder));
+    assert!(client.is_responder(&responder));
+    assert!(!client.is_monitor(&responder));
+    client.flag_anomaly(&responder, &subject, &90);
+
+    client.authorize_monitor(&admin, &responder);
+    client.revoke_monitor(&admin, &responder);
+    assert!(client.is_responder(&responder));
+    assert!(!client.is_monitor(&responder));
+}
+
+#[test]
+fn legacy_authorize_agent_remains_a_responder_compatible_grant() {
+    let env = Env::default();
+    let contract_id = env.register(StellarSentinel, ());
+    let client = StellarSentinelClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let agent = Address::generate(&env);
+    let subject = Address::generate(&env);
+    env.mock_all_auths();
+
+    client.initialize(&admin, &70);
+    client.authorize_agent(&admin, &agent);
+    assert!(client.is_responder(&agent));
+    client.flag_anomaly(&agent, &subject, &80);
+}
