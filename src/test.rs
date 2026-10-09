@@ -417,3 +417,41 @@ fn pause_stops_flags_without_blocking_reads_and_unpause_recovers() {
     client.flag_anomaly(&agent, &subject, &90);
     assert_eq!(client.get_latest_flag(&subject).unwrap().score, 90);
 }
+
+
+#[test]
+fn batch_agent_administration_updates_all_entries_and_is_idempotent() {
+    let env = Env::default();
+    let contract_id = env.register(StellarSentinel, ());
+    let client = StellarSentinelClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let first = Address::generate(&env);
+    let second = Address::generate(&env);
+    env.mock_all_auths();
+
+    client.initialize(&admin, &70);
+    client.authorize_agents(&admin, &vec![&env, first.clone(), second.clone(), first.clone()]);
+    assert!(client.is_agent(&first));
+    assert!(client.is_agent(&second));
+
+    client.revoke_agents(&admin, &vec![&env, first.clone(), first.clone()]);
+    assert!(!client.is_agent(&first));
+    assert!(client.is_agent(&second));
+}
+
+#[test]
+#[should_panic(expected = "agent batch exceeds maximum")]
+fn batch_agent_administration_rejects_oversized_requests() {
+    let env = Env::default();
+    let contract_id = env.register(StellarSentinel, ());
+    let client = StellarSentinelClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let mut agents = vec![&env];
+    env.mock_all_auths();
+    client.initialize(&admin, &70);
+    for _ in 0..=MAX_AGENT_BATCH {
+        agents.push_back(Address::generate(&env));
+    }
+
+    client.authorize_agents(&admin, &agents);
+}

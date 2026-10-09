@@ -43,6 +43,7 @@ const INSTANCE_TTL_BUMP: u32 = 100_000;
 const PERSISTENT_TTL_THRESHOLD: u32 = 10_000;
 const PERSISTENT_TTL_BUMP: u32 = 100_000;
 const MAX_AUTHORIZED_AGENTS: u32 = 128;
+const MAX_AGENT_BATCH: u32 = 16;
 
 #[contract]
 pub struct StellarSentinel;
@@ -96,6 +97,21 @@ impl StellarSentinel {
         env.events().publish((AGENT_ADD_EVENT, admin, agent), true);
     }
 
+    /// Admin-only: authorize up to MAX_AGENT_BATCH addresses in one call.
+    /// Repeated addresses are idempotent, matching authorize_agent.
+    pub fn authorize_agents(env: Env, admin: Address, agents: Vec<Address>) {
+        admin.require_auth(); require_admin(&env, &admin);
+        if agents.len() > MAX_AGENT_BATCH { panic!("agent batch exceeds maximum"); }
+        for agent in agents {
+            let authorized: bool = env.storage().instance().get(&DataKey::Agent(agent.clone())).unwrap_or(false);
+            if !authorized {
+                add_agent_to_registry(&env, &agent);
+                env.storage().instance().set(&DataKey::Agent(agent), &true);
+            }
+        }
+        bump_instance_ttl(&env);
+    }
+
     /// Admin-only: revoke an agent's ability to submit risk flags.
     pub fn revoke_agent(env: Env, admin: Address, agent: Address) {
         admin.require_auth();
@@ -106,6 +122,21 @@ impl StellarSentinel {
         remove_agent_from_registry(&env, &agent);
         bump_instance_ttl(&env);
         env.events().publish((AGENT_DEL_EVENT, admin, agent), false);
+    }
+
+    /// Admin-only: revoke up to MAX_AGENT_BATCH addresses in one call.
+    /// Repeated or already-revoked addresses are idempotent.
+    pub fn revoke_agents(env: Env, admin: Address, agents: Vec<Address>) {
+        admin.require_auth(); require_admin(&env, &admin);
+        if agents.len() > MAX_AGENT_BATCH { panic!("agent batch exceeds maximum"); }
+        for agent in agents {
+            let authorized: bool = env.storage().instance().get(&DataKey::Agent(agent.clone())).unwrap_or(false);
+            if authorized {
+                env.storage().instance().set(&DataKey::Agent(agent.clone()), &false);
+                remove_agent_from_registry(&env, &agent);
+            }
+        }
+        bump_instance_ttl(&env);
     }
 
     /// Return the active agent registry to the administrator.
